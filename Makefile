@@ -1,15 +1,17 @@
 CC_WIN = x86_64-w64-mingw32-gcc
 
-CFLAGS_WIN = -Os -nostdlib -s -Iinclude -Wl,-e,WinMainCRTStartup,--gc-sections
-LDFLAGS_WIN = -lkernel32
+VERSION = "1.0.0"
+
+CFLAGS_WIN = -O2 -nostdlib -s -Iinclude -Wl,-e,__main,--gc-sections -fno-asynchronous-unwind-tables -DVERSION=\"$(VERSION)\"
+CFLAGS_WIN_TINY = $(CFLAGS_WIN) -Wl,--gc-sections,--file-alignment=0x1,--section-alignment=0x1 -ffunction-sections -fdata-sections
+LDFLAGS_WIN = -lkernel32 -lshell32 -lcomdlg32
 
 OBJ_DIR := build_temp
 SRC_DIR := src
 
-OUT_NAME := qmcg.exe
+OUT_NAME := qmts.exe
 
-SRCS := $(wildcard src/*.c) \
-		#$(wildcard src/windows/*.c)
+SRCS := $(wildcard src/*.c)
 
 OBJS := $(patsubst %.c,$(OBJ_DIR)/%.o,$(SRCS))
 
@@ -20,10 +22,13 @@ all: compile
 compile: $(OBJS)
 	$(CC_WIN) $(CFLAGS_WIN) -o $(OUT_NAME) $^ $(LDFLAGS_WIN)
 
+tiny: $(OBJS)
+	$(CC_WIN) $(CFLAGS_WIN_TINY) -o $(OUT_NAME) $^ $(LDFLAGS_WIN)
+
 $(OBJ_DIR)/%.o: %.c
-	@if not exist "$(dir $@)" mkdir "$(dir $@)"
+	@mkdir -p "$(dir $@)"
 	$(CC_WIN) $(CFLAGS_WIN) -c $< -o $@
 
 clean:
-	-del /Q $(OBJ_DIR)\*.o $(OUT_NAME) $(UPX_NAME)
-	-rmdir /Q /S $(OBJ_DIR)
+	-rm -f $(OUT_NAME)
+	-rm -rf $(OBJ_DIR)
