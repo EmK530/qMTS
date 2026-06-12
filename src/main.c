@@ -18,49 +18,6 @@ int TextSearch(char text[]){
     return res;
 }
 
-/*
-
-public static int ReadVLQ(ConBuffer buf)
-    {
-        int val = 0;
-
-        for (int i = 0; i < 4; i++)
-        {
-            byte c = (byte)buf.ReadFast();
-
-            if (c > 0x7F)
-            {
-                val = (val << 7) | (c & 0x7F);
-            }
-            else
-            {
-                val = (val << 7) | c;
-                return val;
-            }
-        }
-
-        return val;
-    }
-    public static void WriteVLQ(BinaryWriter writer, ulong value)
-    {
-        byte[] buffer = new byte[5];
-        int count = 0;
-
-        buffer[count++] = (byte)(value & 0x7F);
-        value >>= 7;
-
-        while (value > 0)
-        {
-            buffer[count++] = (byte)((value & 0x7F) | 0x80);
-            value >>= 7;
-        }
-
-        for (int i = count - 1; i >= 0; i--)
-            writer.Write(buffer[i]);
-    }
-
-*/
-
 int __main()
 {
     print("qMTS - Quick MIDI Track Splitter\nversion ");
