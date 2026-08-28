@@ -3,7 +3,6 @@
 
 #include "BufferFile.h"
 #include "BufferWrite.h"
-#include "LinkedList.h"
 #include "essentials.h"
 #include "types.h"
 
@@ -76,29 +75,37 @@ int __main()
     uint16_t ppq = ReadFast() * 256u + ReadFast();
 
     print("\n[STEP 1/4] Indexing tracks...\n");
-    LinkedList* trackPointers = LinkedList_create();
+    TrackPointer* trackPointers = wmalloc(fakeTracks * sizeof(TrackPointer));
+    if(trackPointers == NULL) {
+        print("[ERROR] Memory allocation failure on trackPointers\n");
+        return 1;
+    }
     uint32_t realTracks = 0;
     
     progressBar(0, 0, fakeTracks);
-    while(1)
+    TrackPointer* tptr = trackPointers;
+    for(int i = 0; i < fakeTracks; i++)
     {
         if(fileEnded)
             break;
         if(TextSearch("MTrk")!=0)
             break;
-        uint32_t size = (ReadFast() * 16777216u) + (ReadFast() * 65536u) + (ReadFast() * 256u) + ReadFast();
+        uint32_t size = ReadU32BE();
         realTracks++;
         progressBar((double)realTracks / (double)fakeTracks, realTracks, fakeTracks);
 
-        TrackPointer* tptr = wmalloc(sizeof(TrackPointer));
         tptr->Position = pos - 8;
         tptr->Length = size;
-        LinkedList_append(trackPointers, tptr);
+        tptr++;
         Seek(pos + size);
     }
     print("\nFound "); print_uint(realTracks); print(" tracks.\n");
     print("\n[STEP 2/4] Sweeping for synth events...\n");
-    LinkedList* synthEvents = LinkedList_create();
+    uint64_t chunkSize = 65536;
+    uint64_t dataSize = chunkSize;
+    uint64_t eventCount = 0;
+    SynthEvent* eventArray = wmalloc(chunkSize * sizeof(SynthEvent));
+    //LinkedList* synthEvents = LinkedList_create();
     res = BufferInit(midipath, 0, 67108864);
     if(!res)
         exit(1);
@@ -108,9 +115,9 @@ int __main()
     progressBar(0, 0, realTracks);
     uint16_t count = 0;
     uint32_t notes = 0;
-    LinkedList_foreach(trackPointers, node) {
+    tptr = trackPointers;
+    for(int i = 0; i < realTracks; i++) {
         char hasNotes = 0;
-        TrackPointer* tptr = (TrackPointer*)node->item;
         count++;
         Seek(tptr->Position);
         if(TextSearch("MTrk")!=0)
@@ -144,27 +151,41 @@ int __main()
                 u_char note = ReadFastInline();
                 u_char vel = ReadFastInline();
 
-                SynthEvent* sev = wmalloc(sizeof(SynthEvent));
+                SynthEvent* sev = eventArray + eventCount;
                 sev->tick = totalPos;
                 sev->track = count;
                 sev->size_data = 3;
-                u_char* newData = (u_char*)wmalloc(3);
-                newData[0] = readEvent; newData[1] = note; newData[2] = vel;
-                sev->allocated_data = newData;
-                LinkedList_append(synthEvents, sev);
+                sev->isSysex = 0;
+                sev->fixedData[0] = readEvent; sev->fixedData[1] = note; sev->fixedData[2] = vel;
+                eventCount++;
+                if(eventCount == dataSize) {
+                    dataSize += chunkSize;
+                    eventArray = wrealloc(eventArray, dataSize * sizeof(SynthEvent));
+                    if(eventArray == NULL) {
+                        print("[ERROR] Out of memory or heap is fragmented. Could not allocate SynthEvents.\n");
+                        return 1;
+                    }
+                }
             }
             else if (trackEvent == 0xC0 || trackEvent == 0xD0)
             {
                 u_char idk = ReadFastInline();
 
-                SynthEvent* sev = wmalloc(sizeof(SynthEvent));
+                SynthEvent* sev = eventArray + eventCount;
                 sev->tick = totalPos;
                 sev->track = count;
                 sev->size_data = 2;
-                u_char* newData = (u_char*)wmalloc(2);
-                newData[0] = readEvent; newData[1] = idk;
-                sev->allocated_data = newData;
-                LinkedList_append(synthEvents, sev);
+                sev->isSysex = 0;
+                sev->fixedData[0] = readEvent; sev->fixedData[1] = idk;
+                eventCount++;
+                if(eventCount == dataSize) {
+                    dataSize += chunkSize;
+                    eventArray = wrealloc(eventArray, dataSize * sizeof(SynthEvent));
+                    if(eventArray == NULL) {
+                        print("[ERROR] Out of memory or heap is fragmented. Could not allocate SynthEvents.\n");
+                        return 1;
+                    }
+                }
             }
             else if (trackEvent == 0)
                 break;
@@ -189,12 +210,21 @@ int __main()
                             }
                         } while(c != 0b11110111);
 
-                        SynthEvent* sev = wmalloc(sizeof(SynthEvent));
+                        SynthEvent* sev = eventArray + eventCount;
                         sev->tick = totalPos;
                         sev->track = count;
                         sev->size_data = sysexLen;
+                        sev->isSysex = 1;
                         sev->allocated_data = newData;
-                        LinkedList_append(synthEvents, sev);
+                        eventCount++;
+                        if(eventCount == dataSize) {
+                            dataSize += chunkSize;
+                            eventArray = wrealloc(eventArray, dataSize * sizeof(SynthEvent));
+                            if(eventArray == NULL) {
+                                print("[ERROR] Out of memory or heap is fragmented. Could not allocate SynthEvents.\n");
+                                return 1;
+                            }
+                        }
                         break;
                     }
                     case 0b11110010:
@@ -211,15 +241,22 @@ int __main()
                             switch (readEvent)
                             {
                                 case 0x51: // Tempo Event
-                                    SynthEvent* sev = wmalloc(sizeof(SynthEvent));
+                                    SynthEvent* sev = eventArray + eventCount;
                                     sev->tick = totalPos;
                                     sev->track = count;
                                     sev->size_data = 6;
-                                    u_char* newData = (u_char*)wmalloc(6);
-                                    newData[0] = 0xFF; newData[1] = 0x51; newData[2] = ReadFastInline();
-                                    newData[3] = ReadFastInline(); newData[4] = ReadFastInline(); newData[5] = ReadFastInline();
-                                    sev->allocated_data = newData;
-                                    LinkedList_append(synthEvents, sev);
+                                    sev->isSysex = 0;
+                                    sev->fixedData[0] = 0xFF; sev->fixedData[1] = 0x51; sev->fixedData[2] = ReadFastInline();
+                                    sev->fixedData[3] = ReadFastInline(); sev->fixedData[4] = ReadFastInline(); sev->fixedData[5] = ReadFastInline();
+                                    eventCount++;
+                                    if(eventCount == dataSize) {
+                                        dataSize += chunkSize;
+                                        eventArray = wrealloc(eventArray, dataSize * sizeof(SynthEvent));
+                                        if(eventArray == NULL) {
+                                            print("[ERROR] Out of memory or heap is fragmented. Could not allocate SynthEvents.\n");
+                                            return 1;
+                                        }
+                                    }
                                     break;
                                 case 0x2F: // End of Track
                                     doloop = FALSE;
@@ -239,47 +276,32 @@ int __main()
         }
         tracksHaveNotes[count-1] = hasNotes;
         progressBar((double)count / (double)realTracks, count, realTracks);
+        tptr++;
     }
 
-    if(synthEvents->size == 0)
+    if(eventCount == 0)
     {
         print("\nThis MIDI has no synth events?\n");
         return 1;
     }
 
-    print("\nLoaded "); print_uint(synthEvents->size); print(" synth events.\n");
+    print("\nLoaded "); print_uint(eventCount); print(" synth events.\n");
     print("Detected "); print_uint(notes); print(" notes. If this is wrong there is a parser error.\n");
 
     print("\n[STEP 3/4] Sorting synth events...\n");
-    uint32_t synthCount = synthEvents->size;
-    SynthEvent** arr = wmalloc(sizeof(SynthEvent*) * synthCount);
-    SynthEvent** temp = wmalloc(sizeof(SynthEvent*) * synthCount);
-    uint32_t i = 0;
-    LinkedList_foreach(synthEvents, node)
-        arr[i++] = (SynthEvent*)node->item;
-    Sort(synthCount, arr, temp);
-
-    // If an odd number of passes occurred, result is in temp, copy back
-    uint32_t passes = 0;
-    uint32_t width = 1;
-    while (width < synthCount) { width *= 2; passes++; }
-    if (passes % 2 == 1)
-        memcpy(arr, temp, sizeof(SynthEvent*) * synthCount);
-
-    LinkedList_dispose(&synthEvents, NULL);
-    wfree(temp);
-
-    SynthEvent* s_arr = wmalloc(sizeof(SynthEvent) * synthCount);
-    for(int i = 0; i < synthCount; i++)
-    {
-        SynthEvent* ev = *(arr+i);
-        s_arr[i].tick = ev->tick;
-        s_arr[i].track = ev->track;
-        s_arr[i].size_data = ev->size_data;
-        s_arr[i].allocated_data = ev->allocated_data;
-        wfree(ev);
+    SynthEvent* temp = wmalloc(eventCount * sizeof(SynthEvent));
+    if(temp == NULL) {
+        print("[ERROR] Out of memory or heap is fragmented. Could not allocate SynthEvents.\n");
+        return 1;
     }
-    wfree(arr);
+    SynthEvent* newArray = Sort(eventCount, eventArray, temp);
+
+    if (newArray != eventArray) {
+        wfree(eventArray);
+        eventArray = newArray;
+    } else {
+        wfree(temp);
+    }
 
     print("\n[STEP 4/4] Generating isolated tracks...\n");
     res = BufferInit(midipath, 0, 67108864);
@@ -303,8 +325,8 @@ int __main()
     CreateDirectoryA(folder, NULL);
 
     count = 0;
-    LinkedList_foreach(trackPointers, node) {
-        TrackPointer* tptr = (TrackPointer*)node->item;
+    for(int i = 0; i < realTracks; i++) {
+        TrackPointer* tptr = trackPointers + i;
         progressBar((double)count / (double)realTracks, count, realTracks);
         count++;
         if(tracksHaveNotes[count-1] == 0)
@@ -338,8 +360,8 @@ int __main()
         BufferWrite_WriteByte(&bw, ppq & 0xFF);
         BufferWrite_WriteBuffer(&bw, TrackPrefix, sizeof(TrackPrefix)-1);
 
-        SynthEvent* synthEnd = s_arr + synthCount;
-        SynthEvent* event = s_arr;
+        SynthEvent* synthEnd = newArray + eventCount;
+        SynthEvent* event = newArray;
 
         BOOL doNotReadAgain = FALSE;
         uint64_t totalPos = 0;
@@ -358,7 +380,11 @@ int __main()
                     BufferWrite_WriteVLQ(&bw, sTick);
                     totalPos += sTick;
                     curPos -= sTick;
-                    BufferWrite_WriteBuffer(&bw, event->allocated_data, event->size_data);
+                    if(event->isSysex) {
+                        BufferWrite_WriteBuffer(&bw, event->allocated_data, event->size_data);
+                    } else {
+                        BufferWrite_WriteBuffer(&bw, event->fixedData, event->size_data);
+                    }
                     event++;
                     doNotReadAgain = TRUE;
                     continue;
@@ -428,16 +454,6 @@ int __main()
                 }
             }
         }
-
-        /* Append the last events if you want :shrug:
-        while(event != synthEnd)
-        {
-            BufferWrite_WriteVLQ(&bw, event->tick - totalPos);
-            totalPos = event->tick;
-            BufferWrite_WriteBuffer(&bw, event->allocated_data, event->size_data);
-            event++;
-        }
-        */
 
         BufferWrite_WriteBuffer(&bw, TrackSuffix, sizeof(TrackSuffix)-1);
 

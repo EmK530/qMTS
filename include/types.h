@@ -11,6 +11,8 @@ typedef struct {
     uint64_t tick;
     uint16_t track;
     uint16_t size_data;
+    uint8_t isSysex;
+    unsigned char fixedData[6];
     void* allocated_data;
 } SynthEvent;
 

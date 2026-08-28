@@ -250,7 +250,7 @@ static inline int cmp(SynthEvent* a, SynthEvent* b)
     return 0;
 }
 
-void Sort(uint32_t count, SynthEvent** arr, SynthEvent** temp)
+SynthEvent* Sort(uint32_t count, SynthEvent* arr, SynthEvent* temp)
 {
     for (uint32_t width = 1; width < count; width *= 2)
     {
@@ -269,7 +269,7 @@ void Sort(uint32_t count, SynthEvent** arr, SynthEvent** temp)
 
             while (l < mid && r < right)
             {
-                if (cmp(arr[l], arr[r]) <= 0)
+                if (cmp(&arr[l], &arr[r]) <= 0)
                     temp[p++] = arr[l++];
                 else
                     temp[p++] = arr[r++];
@@ -282,8 +282,20 @@ void Sort(uint32_t count, SynthEvent** arr, SynthEvent** temp)
                 temp[p++] = arr[r++];
         }
 
-        SynthEvent** swap = arr;
+        SynthEvent* swap = arr;
         arr = temp;
         temp = swap;
     }
+
+    return arr;
+}
+
+void* memset(void* dest, int c, size_t n)
+{
+    unsigned char* d = dest;
+
+    while (n--)
+        *d++ = (unsigned char)c;
+
+    return dest;
 }

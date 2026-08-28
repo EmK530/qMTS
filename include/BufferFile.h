@@ -1,5 +1,6 @@
 #pragma once
 
+#include <string.h>
 #include <stdint.h>
 
 extern uint8_t* data;
@@ -20,13 +21,17 @@ uint64_t ReadVLQ();
 
 unsigned char* ReadRange(int size);
 
-void Copy(unsigned char* target,
-          unsigned long int offset,
-          unsigned long int size);
-
 int IsEOF(void);
 
 static inline unsigned char ReadFastInline(void)
 {
     return data[pos++];
+}
+
+static inline uint32_t ReadU32BE(void)
+{
+    uint32_t value;
+    memcpy(&value, data + pos, sizeof(value));
+    pos += sizeof(value);
+    return __builtin_bswap32(value);
 }

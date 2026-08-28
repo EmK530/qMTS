@@ -33,4 +33,5 @@ void print_uint(uint64_t v);
 size_t u32_to_str(char* out, uint32_t value);
 void concat(char* out, const char* a, const char* b);
 void progressBar(double progress, uint32_t trackProg, uint32_t fakeTracks);
-void Sort(uint32_t count, SynthEvent** arr, SynthEvent** temp);
+SynthEvent* Sort(uint32_t count, SynthEvent* arr, SynthEvent* temp);
+void* memset(void* dest, int c, size_t n);

@@ -22,7 +22,7 @@ int BufferInit(char path[], unsigned long seek, unsigned int bufSizee)
     pos = seek;
 
     hFile = CreateFileA(path, GENERIC_READ, FILE_SHARE_READ,
-                        NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+                        NULL, OPEN_EXISTING, FILE_FLAG_SEQUENTIAL_SCAN, NULL);
 
     if (hFile == INVALID_HANDLE_VALUE)
         return 0;
@@ -98,17 +98,6 @@ unsigned char* ReadRange(int size)
 
     pos += size;
     return range;
-}
-
-void Copy(unsigned char* target,
-          unsigned long int offset,
-          unsigned long int size)
-{
-    if (size == 0)
-        size = (unsigned long int)fileSize;
-
-    memcpy(target + offset, data + pos, size);
-    pos += size;
 }
 
 int IsEOF()
